@@ -1,0 +1,1 @@
+Dataset: TFs+1000/mDC/Specific Dataset, Alpha: 0.6, GNE Test ROC Score: 0.975520833, GNE Test AP score: 0.957520571

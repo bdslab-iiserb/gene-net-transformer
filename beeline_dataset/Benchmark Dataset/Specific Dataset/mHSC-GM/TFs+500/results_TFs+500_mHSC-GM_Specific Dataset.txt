@@ -1,0 +1,1 @@
+Dataset: TFs+500/mHSC-GM/Specific Dataset, Alpha: 0.6, GNE Test ROC Score: 0.994295698, GNE Test AP score: 0.991086033
