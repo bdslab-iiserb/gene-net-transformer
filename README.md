@@ -58,30 +58,30 @@ parameters = {
 - The example notebook and main script reproduce the end-to-end workflow on the included dataset configuration
 - For consistent results, set the same random seed used in the experiments
 
-## 🚀 Running a Demo of GeneNet Transformer (GNT)
+## Running a Demo of GeneNet Transformer (GNT)
 
 Follow the steps below to run a complete demo of the GNT model.
 
 ---
 
-### 1️⃣ Clone the repository
+### Clone the repository
 ```bash
 git clone https://github.com/PranavSadhu/GNT.git
 cd GNT
 ```
 
-### 2️⃣ Create and activate a virtual environment
+### Create and activate a virtual environment
 ```bash
 python3 -m venv gnt_env
 source gnt_env/bin/activate       # Linux / macOS
 # OR
 gnt_env\Scripts\activate          # Windows
 ```
-### 3️⃣ Install dependencies
+###  Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
-### 4️⃣ Run the GNT model
+###  Run the GNT model
 ```bash
 python GNT_main.py
 ```
