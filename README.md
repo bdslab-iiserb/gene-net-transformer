@@ -6,20 +6,14 @@ GeneNet Transformer (GNT) addresses this gap by introducing a transformer-based 
 ## Repository Structure
 
 - `GNT_main.py` – main script for training and evaluation
-- `GNT.py` – implementation of the GeneNet Transformer model
-- `LoadData.py` – data loading utilities
+- `UGNT1.py` – implementation of the GeneNet Transformer model
+- `LoadData1.py` – data loading utilities
 - `convertdata.py` – preprocessing and data conversion functions
-- `evaluation.py` – evaluation metrics and helper functions
+- `Uevaluation.py` – evaluation metrics and helper functions
 - `utils.py` – utility functions for embedding construction and related tasks
 - `requirements.txt` – Python dependencies
-- `GNT_demo.ipynb` – example Jupyter notebooks for end-to-end execution
 - `beeline_dataset/` – benchmark datasets
 
-## Example Notebook
-
-An end-to-end example notebook is provided in:
-
-- `GNT_demo.ipynb`
 
 ## Parameter Description
 
@@ -49,39 +43,4 @@ parameters = {
     'batch_size': 256,
     'learning_rate': 0.002
 }
-```
-
-## Reproducibility Notes
-
-- Install dependencies from `requirements.txt`
-- Use the provided benchmark directory structure
-- The example notebook and main script reproduce the end-to-end workflow on the included dataset configuration
-- For consistent results, set the same random seed used in the experiments
-
-## Running a Demo of GeneNet Transformer (GNT)
-
-Follow the steps below to run a complete demo of the GNT model.
-
----
-
-### Clone the repository
-```bash
-git clone https://github.com/PranavSadhu/GNT.git
-cd GNT
-```
-
-### Create and activate a virtual environment
-```bash
-python3 -m venv gnt_env
-source gnt_env/bin/activate       # Linux / macOS
-# OR
-gnt_env\Scripts\activate          # Windows
-```
-###  Install dependencies
-```bash
-pip install -r requirements.txt
-```
-###  Run the GNT model
-```bash
-python GNT_main.py
 ```

@@ -1,122 +1,169 @@
 import os
 import numpy as np
 import pandas as pd
-from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import roc_auc_score, average_precision_score # confusion_matrix, classification_report, precision_score, recall_score, f1_score
-from tqdm import tqdm
-import LoadData as data
-from convertdata import *
-from GNT import GNT
-from evaluation import *
+from sklearn.model_selection import GridSearchCV, train_test_split
+
+import LoadData1 as data_loader
+from UGNT1 import UGNT1
+from splitedges import load_edge_splits              
+from Uevaluation1 import (
+    get_edge_embeddings_concat,        
+    evaluate_concat_representation,    
+    evaluate_directionality,           
+)
 
 parameters = {
-    'id_embedding_size': 128,
-    'attr_embedding_size': 128,
-    'representation_size': 128,
-    'alpha': 1,
-    'n_neg_samples': 10,
-    'epoch': 30,
-    'batch_size': 256,
-    'learning_rate': 0.002
+    'id_embedding_size'   : 128,
+    'attr_embedding_size' : 128,
+    'representation_size' : 128,
+    'alpha'               : 1,
+    'n_neg_samples'       : 10,
+    'epoch'               : 30,
+    'batch_size'          : 256,
+    'learning_rate'       : 0.002,
 }
 
-# Define the classifier and parameters for GridSearchCV
+SEED = 2018
+VAL_FRAC = 0.1
+
+USE_TARGET_ROLE = False
+
+
 def train_classifier(train_data, train_labels):
-    clf = SVC(class_weight='balanced', probability=True)
+    clf = RandomForestClassifier(
+        class_weight='balanced',
+        random_state=2018,
+        n_jobs=-2,
+    )
     clf_parameters = {
-        'clf__C': [ 1, 90]
+        'clf__n_estimators'     : [200, 500],
+        'clf__max_depth'        : [None, 5, 10],
+        'clf__min_samples_leaf' : [2, 4],
     }
-    
+
     pipeline = Pipeline([('clf', clf)])
-    grid = GridSearchCV(pipeline, clf_parameters, scoring='roc_auc', cv=10)
+    grid = GridSearchCV(pipeline, clf_parameters, scoring='roc_auc', cv=5)
     grid.fit(train_data, train_labels)
-    
     return grid
 
-# Load datasets and train model
-def load_and_train_model(base_dir, dataset_type, sub_folder, main_folder):
-    directory_path = os.path.join(base_dir, dataset_type, sub_folder, main_folder)
-    gene_id_file = pd.read_csv(os.path.join(directory_path, 'gene_ID.tsv'), sep="\t")
 
-    feature_file = os.path.join(directory_path, 'expression_values.csv')
-    link_file = os.path.join(directory_path, "edgelist.csv")
-    
-    # Load datasets
-    train_edges = np.load(os.path.join(directory_path, 'train_edges.npy'))
-    train_edges_false = np.load(os.path.join(directory_path, 'train_edges_false.npy'))
-    test_edges = np.load(os.path.join(directory_path, 'test_edges.npy'))
-    test_edges_false = np.load(os.path.join(directory_path, 'test_edges_false.npy'))
+def load_and_train_model(data_dir, out_dir=None, dataset_type='', sub_folder='',
+                         main_folder=''):
 
-    print('#####')
+    if out_dir is None:
+        out_dir = data_dir
 
-    Data = data.LoadData(directory_path +'/', train_links=train_edges, features_file=feature_file)
-    model = GNT('', Data, 2018, parameters)
-    training_edges = np.concatenate([train_edges, train_edges_false])
-    train_edge_labels = np.concatenate([np.ones(len(train_edges)), np.zeros(len(train_edges_false))])
-    
-    # Train the GNE model
-    embeddings, attr_embeddings = model.train(training_edges, train_edge_labels)
+    print(f"\n{'='*60}")
+    print(f"Loading pre-generated directed edge splits from: {out_dir}")
+    print(f"{'='*60}")
+    paths = load_edge_splits(out_dir)
 
-    # Create a dictionary mapping gene IDs to embeddings
-    gene_ids = gene_id_file['GeneName']  # Adjust the column name based on your data
-    gene_embeddings_dict = {gene_ids[i]: embeddings[i] for i in range(len(gene_ids))}
+    gene_id_file = pd.read_csv(paths['gene_ID'], sep="\t")
+    feature_file = paths['expression_values']
 
-    # Get edge embeddings
-    pos_train_edge_embs = get_edge_embeddings(embeddings, train_edges)
-    neg_train_edge_embs = get_edge_embeddings(embeddings, train_edges_false)
-    train_edge_embs = np.concatenate([pos_train_edge_embs, neg_train_edge_embs])
-    train_edge_labels = np.concatenate([np.ones(len(train_edges)), np.zeros(len(train_edges_false))])
+    train_edges       = np.load(paths['train_edges'])
+    train_edges_false = np.load(paths['train_edges_false'])
+    test_edges        = np.load(paths['test_edges'])
+    test_edges_false  = np.load(paths['test_edges_false'])
 
-    # Shuffle training data
-    index = np.random.permutation(len(train_edge_labels))
-    train_data = train_edge_embs[index, :]
-    train_labels = train_edge_labels[index]
+    print(f"\n{'='*60}")
+    print(f"Dataset : {dataset_type} / {sub_folder} / {main_folder}")
+    print(f"{'='*60}")
 
-    # Train classifier using SVC with GridSearchCV
-    grid = train_classifier(train_data, train_labels)
+    enc_train_pos, val_pos = train_test_split(
+        train_edges, test_size=VAL_FRAC, random_state=SEED, shuffle=True)
+    enc_train_neg, val_neg = train_test_split(
+        train_edges_false, test_size=VAL_FRAC, random_state=SEED, shuffle=True)
 
-    # Test classifier
-    pos_test_edge_embs = get_edge_embeddings(embeddings, test_edges)
-    neg_test_edge_embs = get_edge_embeddings(embeddings, test_edges_false)
-    test_edge_embs = np.concatenate([pos_test_edge_embs, neg_test_edge_embs])
+    val_edges  = np.concatenate([val_pos, val_neg])
+    val_labels = np.concatenate([np.ones(len(val_pos)), np.zeros(len(val_neg))])
+    print(f"Encoder-train positives: {len(enc_train_pos)}  |  "
+          f"held-out validation edges: {len(val_edges)}")
 
-    test_edge_labels = np.concatenate([np.ones(len(test_edges)), np.zeros(len(test_edges_false))])
-    test_preds = grid.predict_proba(test_edge_embs)[:, 1]
+    Data  = data_loader.LoadData1(out_dir + '/',
+                                 train_links=enc_train_pos,
+                                 features_file=feature_file)
+    model = UGNT1('', Data, 2018, parameters)
 
-    # Evaluate model
-    test_roc = roc_auc_score(test_edge_labels, test_preds)
-    test_ap = average_precision_score(test_edge_labels, test_preds)
-    
-    return test_roc, test_ap
+    print("\n-- Training GNT encoder --")
+    embeddings, attr_embeddings = model.train(val_edges, val_labels)
 
-# Loop through all dataset types, main folders, and subfolders
+    if USE_TARGET_ROLE and model.target_embeddings is not None:
+        embeddings = np.concatenate([embeddings, model.target_embeddings], axis=1)
+        print(f"Target-role features ENABLED → embedding is now "
+              f"[source|target] = {embeddings.shape[1]} dims")
+
+    embedding_dim = embeddings.shape[1]
+    print(f"\nGene embedding shape: {embeddings.shape}  (N_genes × d={embedding_dim})")
+
+    results_df, clf = evaluate_concat_representation(
+        Embeddings         = embeddings,
+        train_edges        = train_edges,
+        train_edges_false  = train_edges_false,
+        test_edges         = test_edges,
+        test_edges_false   = test_edges_false,
+        embedding_dim      = embedding_dim,
+        train_classifier_fn= train_classifier,
+        random_state       = SEED,
+    )
+
+    results_df['Dataset Type'] = dataset_type
+    results_df['Sub Folder']   = sub_folder
+    results_df['Main Folder']  = main_folder
+
+    return results_df
+
+
 def run_experiments(base_dir):
-    sub_folders = ['hESC'] # 'hHEP', 'mDC', 'mESC', 'mHSC-E', 'mHSC-GM', 'mHSC-L']
-    dataset_types = ['Specific Dataset' ]  #'Non-Specific Dataset', 'Specific Dataset','STRING Dataset'
-    main_folders = ['TFs+1000'] #'TFs+500'
 
-    results = []
+    dataset_types = ['Specific Dataset','Non-Specific Dataset','STRING Dataset']
+    sub_folders   = ['hESC','hHEP', 'mDC', 'mESC', 'mHSC-E', 'mHSC-GM', 'mHSC-L']
+    main_folders  = ['TFs+500', 'TFs+1000']
+
+    all_results = []
 
     for dataset_type in dataset_types:
         for sub_folder in sub_folders:
             for main_folder in main_folders:
-                print(f'Processing: {dataset_type} - {sub_folder} - {main_folder}')
-                test_roc, test_ap = load_and_train_model(base_dir, dataset_type, sub_folder, main_folder)
-                results.append({
-                    'Dataset Type': dataset_type,
-                    'Sub Folder': sub_folder,
-                    'Main Folder': main_folder,
-                    'AUC-ROC': test_roc,
-                    'AUPR': test_ap
-                })
+                data_dir = os.path.join(base_dir, dataset_type,
+                                        sub_folder, main_folder)
+                print(f'\nProcessing: {dataset_type} – {sub_folder} – {main_folder}')
+                print(f'  data_dir: {os.path.abspath(data_dir)}')
+                try:
+                    df = load_and_train_model(
+                        data_dir=data_dir,
+                        out_dir=os.path.join(data_dir, 'generated'),
+                        dataset_type=dataset_type,
+                        sub_folder=sub_folder,
+                        main_folder=main_folder,
+                    )
+                    all_results.append(df)
+                except Exception as e:
+                    import traceback
+                    print(f"  ERROR: {e}")
+                    traceback.print_exc()
 
-    # Save results to a CSV file
-    # results_df = pd.DataFrame(results)
-    # results_df.to_csv('GNT_specific_results.csv', index=False)
-    print(results)
+    if all_results:
+        final_df = pd.concat(all_results, ignore_index=True)
 
-# Example of running experiments
-base_dir = 'beeline_dataset/Benchmark Dataset'
-run_experiments(base_dir)
+        col_order = [
+            'Dataset Type', 'Sub Folder', 'Main Folder',
+            'Representation', 'AUC-ROC', 'AUPR',
+            'Precision', 'F1-Score',
+            'Directionality Acc', 'Input Dim (-> clf)'
+        ]
+        final_df = final_df[[c for c in col_order if c in final_df.columns]]
+
+        out_file = 'GNT_concat_raw_results.csv'
+        final_df.to_csv(out_file, index=False)
+        print(f"\nResults saved to: {out_file}")
+        print(final_df.to_string(index=False))
+    else:
+        print("No results collected — check dataset paths.")
+
+
+if __name__ == '__main__':
+    base_dir = 'Benchmark Dataset'
+    run_experiments(base_dir)
